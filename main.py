@@ -2,15 +2,13 @@ import asyncio
 import threading
 import os
 import json
+import urllib
+
 from typing import Optional
 from dotenv import load_dotenv
 from pydantic import BaseModel
-from modules.open_ai import OpenAiAssistant
-from modules.icloud import iCloudService
-from fastapi import HTTPException
-from fastapi import FastAPI, WebSocket
-from fastapi.responses import HTMLResponse
-from fastapi.responses import JSONResponse
+from fastapi import HTTPException, FastAPI, WebSocket, Request, Query
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Depends
 from fastapi import WebSocketDisconnect
@@ -19,7 +17,12 @@ from datetime import datetime
 
 from aiortc import RTCPeerConnection, RTCSessionDescription
 from aiortc.contrib.media import MediaRelay
+
 from modules.system_stats import get_system_data
+from modules.open_ai import OpenAiAssistant
+from modules.icloud import iCloudService
+from modules.recordings import find_all_videos, get_thumbnail_path
+
 pcs = set()
 relay = MediaRelay()
 
@@ -27,10 +30,10 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Erlaubt Anfragen von diesem Origin
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # Erlaubt alle HTTP-Methoden (GET, POST, etc.)
-    allow_headers=["*"],  # Erlaubt alle Header
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 openai_assistant = OpenAiAssistant()
@@ -41,8 +44,7 @@ os.makedirs(STATIC_AUDIO_DIR, exist_ok=True)
 
 @app.on_event("startup")
 async def on_startup():
-    """Starte den Stream beim Start der Anwendung."""
-    # loop = asyncio.get_event_loop()
+    print("Starting up...")
 
 @app.get("/")
 async def get():
@@ -55,13 +57,9 @@ async def websocket_endpoint(websocket: WebSocket):
     
     try:
         while True:
-            # Alle 5 Sekunden Systemdaten abrufen
             system_data = get_system_data()
-            # Systemdaten als JSON über WebSocket senden
             await websocket.send_text(json.dumps(system_data))
-            
-            # # Warte 5 Sekunden, bevor die Daten erneut gesendet werden
-            await asyncio.sleep(5)
+            await asyncio.sleep(1)
 
     except WebSocketDisconnect:
         print("Client disconnected")
@@ -171,6 +169,72 @@ async def ring_device(creds: iCloudAuth, ring_device: RingDevice):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/records")
+async def get_records():
+    records = find_all_videos()
+    return JSONResponse(content=records, status_code=200)
+
+@app.get("/thumbnail")
+async def get_thumbnail(video_url: str = Query(..., alias="url")):
+    video_url_decoded = urllib.parse.unquote(video_url)
+    
+    thumbnail_path = get_thumbnail_path(video_url_decoded)
+    
+    if not os.path.isfile(thumbnail_path):
+        raise HTTPException(status_code=404, detail="Thumbnail nicht gefunden")
+
+    return FileResponse(
+        thumbnail_path,
+        media_type="image/jpeg",
+        filename=os.path.basename(thumbnail_path)
+    )
+
+@app.get("/video")
+async def stream_video(request: Request, video_url: str = Query(..., alias="url")):
+    # URL dekodieren, um sicherzustellen, dass sie korrekt verarbeitet wird
+    video_url_decoded = urllib.parse.unquote(video_url)  
+    
+    # Nur den relativen Pfad verwenden: Entferne alle absoluten Pfade
+    # if video_url_decoded.startswith("/"):
+    #     return {"error": "Ungültiger Pfad: Absoluter Pfad ist nicht erlaubt"}
+
+    # Überprüfen, ob die Datei existiert
+    if not os.path.isfile(video_url_decoded):
+        return {"error": "Datei nicht gefunden"}
+
+    file_size = os.path.getsize(video_url_decoded)
+    range_header = request.headers.get("range")
+
+    if range_header:
+        # Byte-Range parsen
+        range_value = range_header.strip().lower().replace("bytes=", "")
+        range_start, range_end = range_value.split("-")
+        range_start = int(range_start)
+        range_end = int(range_end) if range_end else file_size - 1
+        length = range_end - range_start + 1
+
+        def file_stream():
+            with open(video_url_decoded, "rb") as f:
+                f.seek(range_start)
+                yield f.read(length)
+
+        return StreamingResponse(
+            file_stream(),
+            status_code=206,
+            headers={
+                "Content-Range": f"bytes {range_start}-{range_end}/{file_size}",
+                "Accept-Ranges": "bytes",
+                "Content-Length": str(length),
+                "Content-Type": "video/mp4",
+            },
+        )
+    else:
+        return StreamingResponse(
+            open(video_url_decoded, "rb"),
+            media_type="video/mp4"
+        )
+
 
 # class CalendarRequest(BaseModel):
 #     start: str  # Startzeit als String

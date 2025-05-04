@@ -7,6 +7,8 @@ def get_system_data():
     """Sammelt eine Vielzahl von Systemstatistiken, geeignet für Monitoring und Live-Streaming."""
     data = {}
 
+    data["timestamp"] = datetime.now().timestamp()
+
     ## Systeminformationen
     data["system_info"] = {
         "system": platform.system(),
@@ -23,6 +25,7 @@ def get_system_data():
     # CPU
     data["cpu"] = {
         "percent": psutil.cpu_percent(interval=0),
+        "percent_per_core": psutil.cpu_percent(interval=0, percpu=True),
         "count_logical": psutil.cpu_count(logical=True),
         "count_physical": psutil.cpu_count(logical=False),
         "freq": psutil.cpu_freq()._asdict() if psutil.cpu_freq() else None,
