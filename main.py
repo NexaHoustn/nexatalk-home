@@ -2,15 +2,12 @@ import asyncio
 import threading
 import os
 import json
+
 from typing import Optional
 from dotenv import load_dotenv
 from pydantic import BaseModel
-from modules.open_ai import OpenAiAssistant
-from modules.icloud import iCloudService
-from fastapi import HTTPException
-from fastapi import FastAPI, WebSocket
-from fastapi.responses import HTMLResponse
-from fastapi.responses import JSONResponse
+from fastapi import HTTPException, FastAPI, WebSocket
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Depends
 from fastapi import WebSocketDisconnect
@@ -19,7 +16,12 @@ from datetime import datetime
 
 from aiortc import RTCPeerConnection, RTCSessionDescription
 from aiortc.contrib.media import MediaRelay
+
+from modules.cams.cam_recorder import start_recording
 from modules.system_stats import get_system_data
+from modules.open_ai import OpenAiAssistant
+from modules.icloud import iCloudService
+
 pcs = set()
 relay = MediaRelay()
 
@@ -27,10 +29,10 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "https://192.168.0.23:3000"],  # Erlaubt Anfragen von diesem Origin
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # Erlaubt alle HTTP-Methoden (GET, POST, etc.)
-    allow_headers=["*"],  # Erlaubt alle Header
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 openai_assistant = OpenAiAssistant()
@@ -42,7 +44,7 @@ os.makedirs(STATIC_AUDIO_DIR, exist_ok=True)
 @app.on_event("startup")
 async def on_startup():
     """Starte den Stream beim Start der Anwendung."""
-    # loop = asyncio.get_event_loop()
+    start_recording()
 
 @app.get("/")
 async def get():
@@ -55,13 +57,9 @@ async def websocket_endpoint(websocket: WebSocket):
     
     try:
         while True:
-            # Alle 5 Sekunden Systemdaten abrufen
             system_data = get_system_data()
-            # Systemdaten als JSON über WebSocket senden
             await websocket.send_text(json.dumps(system_data))
-            
-            # # Warte 5 Sekunden, bevor die Daten erneut gesendet werden
-            await asyncio.sleep(5)
+            await asyncio.sleep(1)
 
     except WebSocketDisconnect:
         print("Client disconnected")
