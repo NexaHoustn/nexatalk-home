@@ -35,7 +35,7 @@ def move_file(file_path):
     file_date = splitted_file_name[1]
     file_time = splitted_file_name[2]
 
-    new_dir_path = f"{dir_path}/{cam_name}/{file_date}/{file_time.split('-')[0]}"
+    new_dir_path = f"{dir_path}/{cam_name}/{file_date}"
     os.makedirs(new_dir_path, exist_ok=True)
     os.rename(file_path, f"{new_dir_path}/{file_name}")
 

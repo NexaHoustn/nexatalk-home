@@ -69,8 +69,11 @@ def record_cam(cam):
 
     ## === Wait until the next full X-minute ===
     now = datetime.now()
-    next_start_time = (now + timedelta(minutes=recorder_config['interval_minutes'])).replace(second=0, microsecond=0)
-    next_start_time -= timedelta(minutes=next_start_time.minute % recorder_config['interval_minutes'])
+    if recorder_config['interval_minutes'] == 0 or recorder_config['interval_minutes'] == 60:
+        next_start_time = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+    else:
+        next_start_time = (now + timedelta(minutes=recorder_config['interval_minutes'])).replace(second=0, microsecond=0)
+        next_start_time -= timedelta(minutes=next_start_time.minute % recorder_config['interval_minutes'])
 
     wait_seconds = (next_start_time - now).total_seconds()
 
