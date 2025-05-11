@@ -1,0 +1,14 @@
+services:
+    app:
+        build:
+            context: .
+            dockerfile: Dockerfile
+        container_name: nexatalk_home
+        volumes:
+            - .:/app
+            - /media/justinhermanns/6a5ca80a-d730-4a32-8e0d-564d548940a6:/mnt/extern
+            - /etc/localtime:/etc/localtime:ro
+        environment:
+            - PYTHONUNBUFFERED=1
+            - TZ=Europe/Berlin
+        restart: always
